@@ -340,6 +340,10 @@ function buildPropsTable(schema) {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
+let rawSchema = null
+let resolvedSchema = null
+let useRaw = false
+
 function rebuildFromSchema(schema) {
   const required = new Set(schema.required || [])
   rootNodes = Object.entries(schema.properties || {})
@@ -351,19 +355,32 @@ function rebuildFromSchema(schema) {
   renderCard(null)
 }
 
-async function init() {
-  let rawSchema
+async function loadSchema(version) {
+  useRaw = false
+  document.getElementById('toggle-mode').textContent = 'Input: resolved (click to toggle)'
+  setStatus('Loading…', 'info')
 
   try {
-    rawSchema = await fetch('./workflowMigration.schema.json').then(r => r.json())
+    rawSchema = await fetch(`./schemas/${version}.json`).then(r => r.json())
   } catch (e) {
     setStatus('Failed to load schema: ' + e.message, 'warn')
     return
   }
 
-  let resolvedSchema = rawSchema
-  let useRaw = false
+  resolvedSchema = rawSchema
 
+  try {
+    resolvedSchema = await $RefParser.dereference(rawSchema)
+    console.log('Resolved schema:', resolvedSchema)
+    setStatus(`v${version} — $refs resolved OK`, 'ok')
+  } catch (e) {
+    setStatus(`v${version} — resolution error: ${e.message}`, 'warn')
+  }
+
+  rebuildFromSchema(resolvedSchema)
+}
+
+async function init() {
   document.getElementById('toggle-mode').addEventListener('click', () => {
     useRaw = !useRaw
     document.getElementById('toggle-mode').textContent =
@@ -387,15 +404,25 @@ async function init() {
     renderTree(document.getElementById('search').value.toLowerCase())
   })
 
+  let latest
   try {
-    resolvedSchema = await $RefParser.dereference(rawSchema)
-    console.log('Resolved schema:', resolvedSchema)
-    setStatus('$refs resolved OK', 'ok')
+    const meta = await fetch('./schemas/versions.json').then(r => r.json())
+    latest = meta.latest
+    const sel = document.getElementById('version-select')
+    meta.versions.forEach(v => {
+      const opt = document.createElement('option')
+      opt.value = v
+      opt.textContent = v
+      if (v === latest) opt.selected = true
+      sel.appendChild(opt)
+    })
+    sel.addEventListener('change', () => loadSchema(sel.value))
   } catch (e) {
-    setStatus('Resolution error: ' + e.message + ' — showing raw schema', 'warn')
+    setStatus('Failed to load versions: ' + e.message, 'warn')
+    return
   }
 
-  rebuildFromSchema(resolvedSchema)
+  await loadSchema(latest)
 }
 
 init()
