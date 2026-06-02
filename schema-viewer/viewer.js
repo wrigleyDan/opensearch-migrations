@@ -20,8 +20,13 @@ function badge(text, cls) {
 
 function setStatus(text, cls) {
   const s = document.getElementById('status')
+  s.hidden = false
   s.textContent = text
   s.className = `badge-pill ${cls}`
+}
+
+function clearStatus() {
+  document.getElementById('status').hidden = true
 }
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -107,6 +112,61 @@ function renderTree(term = '') {
   container.appendChild(buildTreeFragment(rootNodes, 0, term))
 }
 
+// ── Welcome panel ─────────────────────────────────────────────────────────────
+
+function buildWelcomePanel() {
+  const panel = el('div', 'welcome-panel')
+
+  // About
+  const about = el('div', 'welcome-section')
+  about.appendChild(el('div', 'welcome-section-title', 'About this schema'))
+  about.appendChild(el('p', 'welcome-text',
+    'The workflow migration schema defines every configuration option for the ' +
+    'OpenSearch Migration Assistant — source and target cluster connections, ' +
+    'traffic capture, replayer behaviour, metadata migration, and more. ' +
+    'Each field in the tree corresponds to a key you can set in your migration configuration.'
+  ))
+  const docsLink = el('a', 'welcome-link', 'Migration Assistant documentation ↗')
+  docsLink.href = 'https://docs.opensearch.org/latest/migration-assistant/'
+  docsLink.target = '_blank'
+  docsLink.rel = 'noopener noreferrer'
+  about.appendChild(docsLink)
+  panel.appendChild(about)
+
+  // How to use
+  const howto = el('div', 'welcome-section')
+  howto.appendChild(el('div', 'welcome-section-title', 'How to use'))
+  const steps = el('ul', 'welcome-steps')
+  ;[
+    'Click the ▸ arrow next to any field in the tree to expand its children.',
+    'Click a field name to see its full details in this panel.',
+    'Use the search box to filter the tree by field name.',
+    'Use the version selector to browse schemas from previous releases.',
+  ].forEach(text => { steps.appendChild(el('li', null, text)) })
+  howto.appendChild(steps)
+  panel.appendChild(howto)
+
+  // Badge legend
+  const legend = el('div', 'welcome-section')
+  legend.appendChild(el('div', 'welcome-section-title', 'Badge legend'))
+  const rows = el('div', 'legend-rows')
+  ;[
+    [badge('Required', 'badge-required'), 'Must be set for the configuration to be valid.'],
+    [badge('Optional', 'badge-optional'), 'Has a default value or can be omitted.'],
+    [badge('Default: value', 'badge-default'), 'The value used when the field is not specified.'],
+    [badge('Expert', 'badge-expert'), 'Advanced option — most migrations do not need to change this.'],
+  ].forEach(([b, desc]) => {
+    const row = el('div', 'legend-row')
+    row.appendChild(b)
+    row.appendChild(el('span', 'legend-desc', desc))
+    rows.appendChild(row)
+  })
+  legend.appendChild(rows)
+  panel.appendChild(legend)
+
+  return panel
+}
+
 // ── Field card ────────────────────────────────────────────────────────────────
 
 function renderCard(node) {
@@ -116,7 +176,7 @@ function renderCard(node) {
 }
 
 function buildCardEl(node) {
-  if (!node) return el('div', 'empty-state', 'Select a field from the tree to see its details.')
+  if (!node) return buildWelcomePanel()
 
   const { name, schema, required, pathArr } = node
   const parentPath = pathArr.slice(0, -1)
@@ -252,6 +312,74 @@ function buildPropsTable(schema) {
   return table
 }
 
+// ── Resizable divider ─────────────────────────────────────────────────────────
+
+function initDivider() {
+  const divider = document.getElementById('divider')
+  const viewer  = divider.closest('.viewer')
+  const sidebar = document.getElementById('sidebar')
+
+  let dragging = false
+  let startPos = 0
+  let startSize = 0
+
+  function isMobile() {
+    return getComputedStyle(viewer).flexDirection === 'column'
+  }
+
+  function onStart(pos) {
+    dragging = true
+    divider.classList.add('dragging')
+    if (isMobile()) {
+      startPos  = pos.y
+      startSize = sidebar.getBoundingClientRect().height
+    } else {
+      startPos  = pos.x
+      startSize = sidebar.getBoundingClientRect().width
+    }
+  }
+
+  function onMove(pos) {
+    if (!dragging) return
+    const rect = viewer.getBoundingClientRect()
+    if (isMobile()) {
+      const h = Math.max(120, Math.min(startSize + pos.y - startPos, rect.height - 120))
+      sidebar.style.height = h + 'px'
+    } else {
+      const w = Math.max(150, Math.min(startSize + pos.x - startPos, rect.width - 200))
+      sidebar.style.width = w + 'px'
+    }
+  }
+
+  function onEnd() {
+    dragging = false
+    divider.classList.remove('dragging')
+  }
+
+  divider.addEventListener('mousedown',  e => { onStart({ x: e.clientX, y: e.clientY }); e.preventDefault() })
+  document.addEventListener('mousemove', e => onMove({ x: e.clientX, y: e.clientY }))
+  document.addEventListener('mouseup',   onEnd)
+
+  divider.addEventListener('touchstart', e => {
+    const t = e.touches[0]
+    onStart({ x: t.clientX, y: t.clientY })
+    e.preventDefault()
+  }, { passive: false })
+  document.addEventListener('touchmove', e => {
+    if (!dragging) return
+    const t = e.touches[0]
+    onMove({ x: t.clientX, y: t.clientY })
+    e.preventDefault()
+  }, { passive: false })
+  document.addEventListener('touchend', onEnd)
+
+  // Clear the axis-specific inline size when the layout orientation changes
+  window.addEventListener('resize', () => {
+    if (isMobile()) sidebar.style.width = ''
+    else            sidebar.style.height = ''
+  })
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 function rebuildFromSchema(schema) {
@@ -278,15 +406,17 @@ async function loadSchema(version) {
 
   try {
     schema = await $RefParser.dereference(schema)
-    setStatus(`v${version} — $refs resolved OK`, 'ok')
+    clearStatus()
   } catch (e) {
-    setStatus(`v${version} — resolution error: ${e.message}`, 'warn')
+    setStatus('Warning: $ref resolution failed — some fields may be incomplete.', 'warn')
   }
 
   rebuildFromSchema(schema)
 }
 
 async function init() {
+  initDivider()
+
   document.getElementById('search').addEventListener('input', e => {
     renderTree(e.target.value.toLowerCase())
   })
