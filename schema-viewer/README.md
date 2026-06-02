@@ -15,10 +15,11 @@ An interactive browser for `workflowMigration.schema.json`. Two-column layout: a
 ## Running locally
 
 ```sh
+cd schema-viewer
 npm run dev
 ```
 
-Then open `http://localhost:3000/schema-viewer/`. The dev server serves the repo root so relative paths (including `./schemas/`) resolve correctly.
+Then open `http://localhost:3000/`. The dev server serves the `schema-viewer/` directory directly.
 
 ## Running tests
 

@@ -252,6 +252,74 @@ function buildPropsTable(schema) {
   return table
 }
 
+// ── Resizable divider ─────────────────────────────────────────────────────────
+
+function initDivider() {
+  const divider = document.getElementById('divider')
+  const viewer  = divider.closest('.viewer')
+  const sidebar = document.getElementById('sidebar')
+
+  let dragging = false
+  let startPos = 0
+  let startSize = 0
+
+  function isMobile() {
+    return getComputedStyle(viewer).flexDirection === 'column'
+  }
+
+  function onStart(pos) {
+    dragging = true
+    divider.classList.add('dragging')
+    if (isMobile()) {
+      startPos  = pos.y
+      startSize = sidebar.getBoundingClientRect().height
+    } else {
+      startPos  = pos.x
+      startSize = sidebar.getBoundingClientRect().width
+    }
+  }
+
+  function onMove(pos) {
+    if (!dragging) return
+    const rect = viewer.getBoundingClientRect()
+    if (isMobile()) {
+      const h = Math.max(120, Math.min(startSize + pos.y - startPos, rect.height - 120))
+      sidebar.style.height = h + 'px'
+    } else {
+      const w = Math.max(150, Math.min(startSize + pos.x - startPos, rect.width - 200))
+      sidebar.style.width = w + 'px'
+    }
+  }
+
+  function onEnd() {
+    dragging = false
+    divider.classList.remove('dragging')
+  }
+
+  divider.addEventListener('mousedown',  e => { onStart({ x: e.clientX, y: e.clientY }); e.preventDefault() })
+  document.addEventListener('mousemove', e => onMove({ x: e.clientX, y: e.clientY }))
+  document.addEventListener('mouseup',   onEnd)
+
+  divider.addEventListener('touchstart', e => {
+    const t = e.touches[0]
+    onStart({ x: t.clientX, y: t.clientY })
+    e.preventDefault()
+  }, { passive: false })
+  document.addEventListener('touchmove', e => {
+    if (!dragging) return
+    const t = e.touches[0]
+    onMove({ x: t.clientX, y: t.clientY })
+    e.preventDefault()
+  }, { passive: false })
+  document.addEventListener('touchend', onEnd)
+
+  // Clear the axis-specific inline size when the layout orientation changes
+  window.addEventListener('resize', () => {
+    if (isMobile()) sidebar.style.width = ''
+    else            sidebar.style.height = ''
+  })
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 function rebuildFromSchema(schema) {
@@ -287,6 +355,8 @@ async function loadSchema(version) {
 }
 
 async function init() {
+  initDivider()
+
   document.getElementById('search').addEventListener('input', e => {
     renderTree(e.target.value.toLowerCase())
   })
