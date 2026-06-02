@@ -1,6 +1,6 @@
 # Schema Viewer
 
-An interactive browser for `workflowMigration.schema.json`. Two-column layout: a collapsible field tree on the left, a detail card on the right. No build step — three static files served directly.
+An interactive browser for `workflowMigration.schema.json`. Two-column layout: a collapsible field tree on the left, a detail card on the right. No build step — four static files served directly.
 
 **Live site:** `https://wrigleydan.github.io/opensearch-migrations/`
 
@@ -11,7 +11,6 @@ An interactive browser for `workflowMigration.schema.json`. Two-column layout: a
 - `oneOf`/`anyOf` variant rows and per-variant property tables
 - Expert field labelling — fields whose description begins with `[Expert]` get a badge and the prefix is stripped from the visible text
 - Version selector — switch between all schema releases that include the asset
-- Toggle between the raw and `$ref`-resolved schema
 
 ## Running locally
 

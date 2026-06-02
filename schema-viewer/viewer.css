@@ -24,7 +24,7 @@ h1 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
 }
 .badge-pill.ok   { background: #e6f4ea; color: #1a6b35; }
 .badge-pill.warn { background: #fce8e8; color: #a01010; }
-.badge-pill.info { background: #e3f0fb; color: #0a3a6a; cursor: pointer; }
+.badge-pill.info { background: #e3f0fb; color: #0a3a6a; }
 
 /* ── Two-column layout ──────────────────────────────────────────────────── */
 .viewer {
