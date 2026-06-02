@@ -20,8 +20,13 @@ function badge(text, cls) {
 
 function setStatus(text, cls) {
   const s = document.getElementById('status')
+  s.hidden = false
   s.textContent = text
   s.className = `badge-pill ${cls}`
+}
+
+function clearStatus() {
+  document.getElementById('status').hidden = true
 }
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -107,6 +112,61 @@ function renderTree(term = '') {
   container.appendChild(buildTreeFragment(rootNodes, 0, term))
 }
 
+// ── Welcome panel ─────────────────────────────────────────────────────────────
+
+function buildWelcomePanel() {
+  const panel = el('div', 'welcome-panel')
+
+  // About
+  const about = el('div', 'welcome-section')
+  about.appendChild(el('div', 'welcome-section-title', 'About this schema'))
+  about.appendChild(el('p', 'welcome-text',
+    'The workflow migration schema defines every configuration option for the ' +
+    'OpenSearch Migration Assistant — source and target cluster connections, ' +
+    'traffic capture, replayer behaviour, metadata migration, and more. ' +
+    'Each field in the tree corresponds to a key you can set in your migration configuration.'
+  ))
+  const docsLink = el('a', 'welcome-link', 'Migration Assistant documentation ↗')
+  docsLink.href = 'https://docs.opensearch.org/latest/migration-assistant/'
+  docsLink.target = '_blank'
+  docsLink.rel = 'noopener noreferrer'
+  about.appendChild(docsLink)
+  panel.appendChild(about)
+
+  // How to use
+  const howto = el('div', 'welcome-section')
+  howto.appendChild(el('div', 'welcome-section-title', 'How to use'))
+  const steps = el('ul', 'welcome-steps')
+  ;[
+    'Click the ▸ arrow next to any field in the tree to expand its children.',
+    'Click a field name to see its full details in this panel.',
+    'Use the search box to filter the tree by field name.',
+    'Use the version selector to browse schemas from previous releases.',
+  ].forEach(text => { steps.appendChild(el('li', null, text)) })
+  howto.appendChild(steps)
+  panel.appendChild(howto)
+
+  // Badge legend
+  const legend = el('div', 'welcome-section')
+  legend.appendChild(el('div', 'welcome-section-title', 'Badge legend'))
+  const rows = el('div', 'legend-rows')
+  ;[
+    [badge('Required', 'badge-required'), 'Must be set for the configuration to be valid.'],
+    [badge('Optional', 'badge-optional'), 'Has a default value or can be omitted.'],
+    [badge('Default: value', 'badge-default'), 'The value used when the field is not specified.'],
+    [badge('Expert', 'badge-expert'), 'Advanced option — most migrations do not need to change this.'],
+  ].forEach(([b, desc]) => {
+    const row = el('div', 'legend-row')
+    row.appendChild(b)
+    row.appendChild(el('span', 'legend-desc', desc))
+    rows.appendChild(row)
+  })
+  legend.appendChild(rows)
+  panel.appendChild(legend)
+
+  return panel
+}
+
 // ── Field card ────────────────────────────────────────────────────────────────
 
 function renderCard(node) {
@@ -116,7 +176,7 @@ function renderCard(node) {
 }
 
 function buildCardEl(node) {
-  if (!node) return el('div', 'empty-state', 'Select a field from the tree to see its details.')
+  if (!node) return buildWelcomePanel()
 
   const { name, schema, required, pathArr } = node
   const parentPath = pathArr.slice(0, -1)
@@ -346,9 +406,9 @@ async function loadSchema(version) {
 
   try {
     schema = await $RefParser.dereference(schema)
-    setStatus(`v${version} — $refs resolved OK`, 'ok')
+    clearStatus()
   } catch (e) {
-    setStatus(`v${version} — resolution error: ${e.message}`, 'warn')
+    setStatus('Warning: $ref resolution failed — some fields may be incomplete.', 'warn')
   }
 
   rebuildFromSchema(schema)

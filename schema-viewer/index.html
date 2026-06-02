@@ -9,7 +9,8 @@
   <body>
     <h1>Schema Viewer</h1>
     <p class="subtitle">
-      Interactive browser for <code>workflowMigration.schema.json</code>.
+      Interactive reference for the OpenSearch Migration Assistant configuration schema.
+      Browse fields in the tree, click one to see its type, requirement, default, and description.
     </p>
 
     <div class="status-bar">
@@ -31,9 +32,7 @@
         <div class="tree-scroll" id="tree"></div>
       </div>
       <div class="divider" id="divider"></div>
-      <div class="main" id="main">
-        <div class="empty-state">Select a field from the tree to see its details.</div>
-      </div>
+      <div class="main" id="main"></div>
     </div>
 
     <script type="module" src="viewer.js"></script>
