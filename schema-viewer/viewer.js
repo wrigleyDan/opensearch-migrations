@@ -254,10 +254,6 @@ function buildPropsTable(schema) {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
-let rawSchema = null
-let resolvedSchema = null
-let useRaw = false
-
 function rebuildFromSchema(schema) {
   const required = new Set(schema.required || [])
   rootNodes = Object.entries(schema.properties || {})
@@ -270,38 +266,27 @@ function rebuildFromSchema(schema) {
 }
 
 async function loadSchema(version) {
-  useRaw = false
-  document.getElementById('toggle-mode').textContent = 'Input: resolved (click to toggle)'
   setStatus('Loading…', 'info')
 
+  let schema
   try {
-    rawSchema = await fetch(`./schemas/${version}.json`).then(r => r.json())
+    schema = await fetch(`./schemas/${version}.json`).then(r => r.json())
   } catch (e) {
     setStatus('Failed to load schema: ' + e.message, 'warn')
     return
   }
 
-  resolvedSchema = rawSchema
-
   try {
-    resolvedSchema = await $RefParser.dereference(rawSchema)
-    console.log('Resolved schema:', resolvedSchema)
+    schema = await $RefParser.dereference(schema)
     setStatus(`v${version} — $refs resolved OK`, 'ok')
   } catch (e) {
     setStatus(`v${version} — resolution error: ${e.message}`, 'warn')
   }
 
-  rebuildFromSchema(resolvedSchema)
+  rebuildFromSchema(schema)
 }
 
 async function init() {
-  document.getElementById('toggle-mode').addEventListener('click', () => {
-    useRaw = !useRaw
-    document.getElementById('toggle-mode').textContent =
-      `Input: ${useRaw ? 'raw' : 'resolved'} (click to toggle)`
-    rebuildFromSchema(useRaw ? rawSchema : resolvedSchema)
-  })
-
   document.getElementById('search').addEventListener('input', e => {
     renderTree(e.target.value.toLowerCase())
   })
