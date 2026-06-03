@@ -7,6 +7,8 @@ on:
     paths:
       - 'schema-viewer/**'
       - '.github/workflows/deploy-schema-viewer.yml'
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -27,6 +29,35 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Fetch schemas from GitHub Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p schema-viewer/schemas
+
+          # Fetch all releases that include the schema asset (newest first)
+          gh api repos/opensearch-project/opensearch-migrations/releases \
+            --paginate \
+            --jq '.[] | select(.assets | map(.name) | contains(["workflowMigration.schema.json"]))
+                      | .tag_name + " " + (.assets[] | select(.name == "workflowMigration.schema.json") | .browser_download_url)' \
+            > /tmp/schema-releases.txt
+
+          declare -a versions
+          while IFS=' ' read -r tag url; do
+            echo "Downloading schema for $tag..."
+            curl -fsSL "$url" -o "schema-viewer/schemas/${tag}.json"
+            versions+=("$tag")
+          done < /tmp/schema-releases.txt
+
+          node - "${versions[@]}" <<'EOF'
+          const fs = require('fs')
+          const versions = process.argv.slice(2)
+          if (versions.length === 0) { console.error('No schema versions found'); process.exit(1) }
+          const meta = { latest: versions[0], versions }
+          fs.writeFileSync('schema-viewer/schemas/versions.json', JSON.stringify(meta, null, 2) + '\n')
+          console.log(`Generated versions.json: latest=${meta.latest}, count=${versions.length}`)
+          EOF
 
       - name: Configure Pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
