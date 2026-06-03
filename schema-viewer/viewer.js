@@ -1,9 +1,12 @@
 import $RefParser from 'https://esm.sh/@apidevtools/json-schema-ref-parser@15'
+import { create as createDiffer } from 'https://esm.sh/jsondiffpatch@0.6.0'
 import {
   buildNode, nodeMatchesSearch,
   getTypeLabel, typeBadgeClass, variantTitle, variantDesc,
-  isExpert, stripExpert,
+  isExpert, stripExpert, computeSchemaDiff,
 } from './schema-utils.js'
+
+const differ = createDiffer()
 
 // ── DOM helpers ───────────────────────────────────────────────────────────────
 
@@ -34,6 +37,10 @@ function clearStatus() {
 const expandedKeys = new Set()
 let selectedKey = null
 let rootNodes = []
+let allVersions = []          // newest-first; populated in init()
+let currentVersion = null     // currently displayed version
+let currentResolved = null    // resolved schema for currentVersion; used by recomputeDiff
+let currentDiff = null        // { fromVersion, diff } for the welcome panel
 
 function collectAllKeys(nodes, acc = new Set()) {
   for (const node of nodes) {
@@ -112,10 +119,95 @@ function renderTree(term = '') {
   container.appendChild(buildTreeFragment(rootNodes, 0, term))
 }
 
+// ── Change summary ────────────────────────────────────────────────────────────
+
+function buildChangeSummarySection({ fromVersion, diff }) {
+  const { added, removed, modified } = diff
+  const section = el('div', 'welcome-section')
+
+  // Title row with compare-to selector
+  const titleRow = el('div', 'diff-title-row')
+  titleRow.appendChild(el('span', 'welcome-section-title', 'Change summary'))
+
+  const compareWrap = el('span', 'diff-compare-wrap')
+  compareWrap.appendChild(el('label', 'diff-compare-label', 'Compare to'))
+  const compareSelect = el('select', 'diff-compare-select')
+  const currentIdx = allVersions.indexOf(currentVersion)
+  const olderVersions = currentIdx >= 0 ? allVersions.slice(currentIdx + 1) : []
+  olderVersions.forEach(v => {
+    const opt = document.createElement('option')
+    opt.value = v
+    opt.textContent = `v${v}`
+    if (v === fromVersion) opt.selected = true
+    compareSelect.appendChild(opt)
+  })
+  compareSelect.addEventListener('change', () => recomputeDiff(compareSelect.value))
+  compareWrap.appendChild(compareSelect)
+  titleRow.appendChild(compareWrap)
+  section.appendChild(titleRow)
+
+  const total = added.length + removed.length + modified.length
+  if (total === 0) {
+    section.appendChild(el('p', 'welcome-text', `No top-level field changes from v${fromVersion}.`))
+    return section
+  }
+
+  const note = el('p', 'diff-note',
+    'Covers top-level field additions, removals, and scalar changes. ' +
+    'Structural refactors inside shared definitions may not appear — see Known Limitations in the README.')
+  section.appendChild(note)
+
+  function renderGroup(label, cls, items, renderItem) {
+    if (!items.length) return
+    const group = el('div', 'diff-group')
+    group.appendChild(el('span', `diff-label ${cls}`, `${label} (${items.length})`))
+    const list = el('ul', 'diff-list')
+    items.forEach(item => list.appendChild(renderItem(item)))
+    group.appendChild(list)
+    section.appendChild(group)
+  }
+
+  const fmt = path => path.split('/').join(' › ')
+
+  renderGroup('Added', 'diff-added', added, path => {
+    const li = el('li', 'diff-item')
+    li.appendChild(el('code', 'diff-field', fmt(path)))
+    return li
+  })
+
+  renderGroup('Removed', 'diff-removed', removed, path => {
+    const li = el('li', 'diff-item')
+    li.appendChild(el('code', 'diff-field', fmt(path)))
+    return li
+  })
+
+  renderGroup('Modified', 'diff-modified', modified, ({ path, changes }) => {
+    const li = el('li', 'diff-item')
+    li.appendChild(el('code', 'diff-field', fmt(path)))
+    const descs = changes.map(({ kind, from, to }) => {
+      if (kind === 'type')     return `type: ${from} → ${to}`
+      if (kind === 'required') return to ? 'became required' : 'became optional'
+      if (kind === 'default') {
+        if (from === undefined) return `default added: ${to}`
+        if (to   === undefined) return `default removed`
+        return `default: ${from} → ${to}`
+      }
+      return kind
+    })
+    li.appendChild(el('span', 'diff-desc', ` — ${descs.join(', ')}`))
+    return li
+  })
+
+  return section
+}
+
 // ── Welcome panel ─────────────────────────────────────────────────────────────
 
 function buildWelcomePanel() {
   const panel = el('div', 'welcome-panel')
+
+  // Change summary (shown whenever there is a predecessor version)
+  if (currentDiff) panel.appendChild(buildChangeSummarySection(currentDiff))
 
   // About
   const about = el('div', 'welcome-section')
@@ -393,22 +485,60 @@ function rebuildFromSchema(schema) {
   renderCard(null)
 }
 
+async function recomputeDiff(compareVersion) {
+  if (!compareVersion || !currentResolved) return
+  setStatus('Loading comparison…', 'info')
+  try {
+    const raw = await fetch(`./schemas/${compareVersion}.json`).then(r => r.json())
+    const resolved = await $RefParser.dereference(raw)
+    currentDiff = { fromVersion: compareVersion, diff: computeSchemaDiff(resolved, currentResolved, differ) }
+  } catch (_) {
+    currentDiff = null
+  }
+  clearStatus()
+  renderCard(null)
+}
+
 async function loadSchema(version) {
   setStatus('Loading…', 'info')
+  currentVersion = version
+  currentResolved = null
+  currentDiff = null
 
-  let schema
+  let rawSchema
   try {
-    schema = await fetch(`./schemas/${version}.json`).then(r => r.json())
+    rawSchema = await fetch(`./schemas/${version}.json`).then(r => r.json())
   } catch (e) {
     setStatus('Failed to load schema: ' + e.message, 'warn')
     return
   }
 
+  // Resolve current schema and, for the change summary, also resolve the
+  // immediate predecessor — both needed so the diff sees actual field structures
+  // rather than opaque $ref strings.
+  const vIdx = allVersions.indexOf(version)
+  const prevVersion = vIdx >= 0 && vIdx < allVersions.length - 1 ? allVersions[vIdx + 1] : null
+
+  const prevRawPromise = prevVersion
+    ? fetch(`./schemas/${prevVersion}.json`).then(r => r.json()).catch(() => null)
+    : Promise.resolve(null)
+
+  let schema = rawSchema
   try {
-    schema = await $RefParser.dereference(schema)
+    schema = await $RefParser.dereference(rawSchema)
     clearStatus()
   } catch (e) {
     setStatus('Warning: $ref resolution failed — some fields may be incomplete.', 'warn')
+  }
+  currentResolved = schema
+
+  // Compute change summary against the default predecessor (best-effort)
+  const prevRaw = await prevRawPromise
+  if (prevRaw) {
+    try {
+      const prevResolved = await $RefParser.dereference(prevRaw)
+      currentDiff = { fromVersion: prevVersion, diff: computeSchemaDiff(prevResolved, schema, differ) }
+    } catch (_) { /* silently skip on resolution error */ }
   }
 
   rebuildFromSchema(schema)
@@ -436,6 +566,7 @@ async function init() {
   let latest
   try {
     const meta = await fetch('./schemas/versions.json').then(r => r.json())
+    allVersions = meta.versions
     latest = meta.latest
     const sel = document.getElementById('version-select')
     meta.versions.forEach(v => {
