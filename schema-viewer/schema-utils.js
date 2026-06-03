@@ -170,6 +170,17 @@ export function computeSchemaDiff(oldSchema, newSchema, differ) {
   return { added, removed, modified }
 }
 
+// ── Composite field helper ────────────────────────────────────────────────────
+
+export function isComposite(schema) {
+  return !!(
+    schema.properties ||
+    schema.oneOf || schema.anyOf || schema.allOf ||
+    (schema.additionalProperties && typeof schema.additionalProperties === 'object') ||
+    (schema.type === 'array' && schema.items)
+  )
+}
+
 // ── Expert field helpers ──────────────────────────────────────────────────────
 
 export function isExpert(desc) {

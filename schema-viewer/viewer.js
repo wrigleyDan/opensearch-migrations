@@ -3,7 +3,7 @@ import { create as createDiffer } from 'https://esm.sh/jsondiffpatch@0.6.0'
 import {
   buildNode, nodeMatchesSearch,
   getTypeLabel, typeBadgeClass, variantTitle, variantDesc,
-  isExpert, stripExpert, computeSchemaDiff,
+  isExpert, stripExpert, computeSchemaDiff, isComposite,
 } from './schema-utils.js'
 
 const differ = createDiffer()
@@ -50,6 +50,29 @@ function collectAllKeys(nodes, acc = new Set()) {
     }
   }
   return acc
+}
+
+function findNodeByKey(key, nodes = rootNodes) {
+  for (const node of nodes) {
+    if (node.key === key) return node
+    const found = findNodeByKey(key, node.children)
+    if (found) return found
+  }
+  return null
+}
+
+function navigateTo(node) {
+  let pathSoFar = []
+  for (const segment of node.pathArr.slice(0, -1)) {
+    pathSoFar.push(segment)
+    expandedKeys.add(pathSoFar.join('/'))
+  }
+  selectedKey = node.key
+  renderTree(document.getElementById('search').value.toLowerCase())
+  requestAnimationFrame(() => {
+    document.querySelector('.tree-item.selected')?.scrollIntoView({ block: 'nearest' })
+  })
+  renderCard(node)
 }
 
 // ── Sidebar tree ──────────────────────────────────────────────────────────────
@@ -331,14 +354,14 @@ function buildCardEl(node) {
       const lbl = el('div', 'variant-label', 'When ')
       lbl.appendChild(el('code', '', `"${variantTitle(branch, i, unionKey)}"`))
       block.appendChild(lbl)
-      block.appendChild(buildPropsTable(branch))
+      block.appendChild(buildPropsTable(branch, [...pathArr, variantTitle(branch, i, unionKey)]))
       section.appendChild(block)
     })
     card.appendChild(section)
   } else if (!unionKey && schema.properties) {
     const section = el('div', 'section')
     section.appendChild(el('div', 'section-title', 'Properties'))
-    section.appendChild(buildPropsTable(schema))
+    section.appendChild(buildPropsTable(schema, pathArr))
     card.appendChild(section)
   }
 
@@ -371,7 +394,7 @@ function metaItem(labelText, valueEl) {
   return item
 }
 
-function buildPropsTable(schema) {
+function buildPropsTable(schema, parentPathArr = []) {
   const required = new Set(schema.required || [])
   const table = el('table', 'props-table')
   const tbody = el('tbody')
@@ -382,7 +405,19 @@ function buildPropsTable(schema) {
     const tr = document.createElement('tr')
 
     const nameTd = el('td', 'prop-name-cell')
-    nameTd.appendChild(el('span', 'prop-name', key))
+    if (isComposite(val)) {
+      const link = el('a', 'prop-name prop-drill', key)
+      link.href = '#'
+      link.addEventListener('click', e => {
+        e.preventDefault()
+        const childKey = [...parentPathArr, key].join('/')
+        const node = findNodeByKey(childKey) || buildNode(key, val, [...parentPathArr, key], required)
+        navigateTo(node)
+      })
+      nameTd.appendChild(link)
+    } else {
+      nameTd.appendChild(el('span', 'prop-name', key))
+    }
     nameTd.appendChild(el('span', 'prop-type', t))
     tr.appendChild(nameTd)
 

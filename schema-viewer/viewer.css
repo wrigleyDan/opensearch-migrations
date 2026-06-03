@@ -238,7 +238,9 @@ h1 {
   padding: 10px 14px; width: 150px; vertical-align: top;
   background: #F5F7F7; border-right: 1px solid #D9E1E2;
 }
-.prop-name { font-family: "Fira Mono", Consolas, Menlo, Monaco, monospace; font-weight: 500; color: #003b5c; display: block; }
+.prop-name  { font-family: "Fira Mono", Consolas, Menlo, Monaco, monospace; font-weight: 500; color: #003b5c; display: block; }
+.prop-drill { font-family: "Fira Mono", Consolas, Menlo, Monaco, monospace; font-weight: 500; color: #0055A6; display: block; text-decoration: none; }
+.prop-drill:hover { text-decoration: underline; color: #00a3e0; }
 .prop-type { font-family: "Fira Mono", Consolas, Menlo, Monaco, monospace; font-size: 10px; color: #4D8399; margin-top: 2px; display: block; }
 .prop-desc-cell { padding: 10px 14px; vertical-align: top; color: #002A3A; line-height: 1.5; }
 .prop-badges { display: flex; gap: 6px; margin-top: 5px; flex-wrap: wrap; }
