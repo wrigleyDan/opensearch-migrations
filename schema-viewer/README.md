@@ -2,7 +2,7 @@
 
 An interactive browser for `workflowMigration.schema.json`. Two-column layout: a collapsible field tree on the left, a detail card on the right. No build step — four static files served directly.
 
-**Live site:** `https://wrigleydan.github.io/opensearch-migrations/`
+**Live site:** `https://opensearch-project.github.io/opensearch-migrations/`
 
 ## Features
 
@@ -39,35 +39,25 @@ Tests cover the pure logic in `schema-utils.js` — tree building, search filter
 | `schema-utils.js` | Pure logic functions — tree building, type helpers, expert-field handling |
 | `schema-utils.test.js` | Vitest unit tests for `schema-utils.js` |
 | `viewer.css` | Styles |
-| `schemas/versions.json` | Version manifest: `{ "latest": "x.y.z", "versions": [...] }` |
-| `schemas/<version>.json` | One schema file per release |
+| `schemas/versions.json` | Generated at deploy time — version manifest |
+| `schemas/<version>.json` | Generated at deploy time — one file per release |
 
-## Adding a new schema version
+## Schema versions
 
-Schema files are updated automatically on every push to `main` that changes schema-related source paths. The `publish-schema-to-pages` job in `.github/workflows/generate-workflow-schema.yaml`:
+Schema files are **not stored in this repository**. They are downloaded from GitHub Release assets at deploy time by `.github/workflows/deploy-schema-viewer.yml`.
 
-1. Reads the version from the `VERSION` file
-2. Copies the generated schema to `schemas/<version>.json`
-3. Prepends the version to `schemas/versions.json` and updates `latest`
-4. Commits the changes, which triggers a Pages redeploy
+On each deployment the workflow:
 
-To add a version manually, download the release asset and update the manifest:
+1. Queries the `opensearch-project/opensearch-migrations` Releases API for all releases that include `workflowMigration.schema.json`
+2. Downloads each schema to `schemas/<version>.json`
+3. Generates `schemas/versions.json` with the ordered version list and `latest` pointer
 
-```sh
-gh release download <version> \
-  --repo opensearch-project/opensearch-migrations \
-  --pattern workflowMigration.schema.json \
-  --output schemas/<version>.json
-
-node -e "
-  const fs = require('fs');
-  const meta = JSON.parse(fs.readFileSync('schemas/versions.json', 'utf8'));
-  meta.versions.unshift('<version>');
-  meta.latest = '<version>';
-  fs.writeFileSync('schemas/versions.json', JSON.stringify(meta, null, 2) + '\n');
-"
-```
+A new schema version becomes available in the viewer automatically when its GitHub Release is published — no manual steps or commits required.
 
 ## Deployment
 
-Pushes to `main` that touch `schema-viewer/**` trigger `.github/workflows/deploy-schema-viewer.yml`, which deploys the `schema-viewer/` directory to GitHub Pages via `actions/deploy-pages`.
+`.github/workflows/deploy-schema-viewer.yml` triggers on:
+
+- **Push to `main`** touching `schema-viewer/**` — for viewer code changes
+- **Release published** — picks up the new schema and redeploys
+- **Manual** via `workflow_dispatch`
