@@ -2,7 +2,7 @@
 
 An interactive browser for `workflowMigration.schema.json`. Two-column layout: a collapsible field tree on the left, a detail card on the right. No build step — four static files served directly.
 
-**Live site:** `https://wrigleydan.github.io/opensearch-migrations/`
+**Live site:** `https://opensearch-project.github.io/opensearch-migrations/`
 
 ## Features
 
