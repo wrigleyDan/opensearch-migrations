@@ -149,6 +149,37 @@ h1 {
 .legend-row { display: flex; align-items: center; gap: 12px; }
 .legend-desc { font-size: 12px; color: #4D8399; }
 
+/* ── Change summary ─────────────────────────────────────────────────────── */
+.diff-title-row {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid #D9E1E2;
+}
+.diff-title-row .welcome-section-title { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+.diff-compare-wrap { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.diff-compare-label { font-size: 11px; color: #4D8399; }
+.diff-compare-select {
+  font-size: 11px; padding: 2px 6px; border: 1px solid #D9E1E2; border-radius: 4px;
+  font-family: inherit; color: #002A3A; background: #fff; cursor: pointer;
+}
+.diff-compare-select:focus { outline: none; border-color: #00a3e0; }
+.diff-note {
+  font-size: 11px; color: #4D8399; font-style: italic; margin-bottom: 12px;
+  padding: 6px 10px; background: rgba(0, 163, 224, 0.06); border-radius: 4px;
+  border-left: 2px solid #46BDE9; line-height: 1.5;
+}
+.diff-group { margin-bottom: 10px; }
+.diff-label {
+  display: inline-block; font-size: 11px; font-weight: 600;
+  padding: 2px 8px; border-radius: 4px; margin-bottom: 6px;
+}
+.diff-added    { background: rgba(44, 213, 196, 0.12); color: #166B62; border: 1px solid #2CD5C4; }
+.diff-removed  { background: rgba(221,  74, 105, 0.10); color: #9B2335; border: 1px solid #DD4A69; }
+.diff-modified { background: rgba(255, 184,  28, 0.12); color: #7A5000; border: 1px solid #FFB81C; }
+.diff-list { list-style: none; padding-left: 4px; }
+.diff-item { font-size: 12px; padding: 2px 0; color: #002A3A; }
+.diff-field { font-family: "Fira Mono", Consolas, Menlo, Monaco, monospace; color: #003b5c; }
+.diff-desc  { color: #4D8399; }
+
 /* ── Field card ─────────────────────────────────────────────────────────── */
 .field-card { padding: 24px 28px; }
 

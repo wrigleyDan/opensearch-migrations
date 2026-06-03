@@ -1,9 +1,13 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeAll } from 'vitest'
+import { create as createDiffer } from 'jsondiffpatch'
 import {
   buildNode, buildChildren, nodeMatchesSearch,
   getTypeLabel, typeBadgeClass, variantTitle, variantDesc,
-  isExpert, stripExpert,
+  isExpert, stripExpert, computeSchemaDiff,
 } from './schema-utils.js'
+
+let differ
+beforeAll(() => { differ = createDiffer() })
 
 // ── isExpert / stripExpert ────────────────────────────────────────────────────
 
@@ -263,5 +267,167 @@ describe('nodeMatchesSearch', () => {
   })
   it('matches on exact full name', () => {
     expect(nodeMatchesSearch(leaf('type'), 'type')).toBe(true)
+  })
+})
+
+// ── computeSchemaDiff ─────────────────────────────────────────────────────────
+
+describe('computeSchemaDiff', () => {
+  const diff = (oldSchema, newSchema) => computeSchemaDiff(oldSchema, newSchema, differ)
+
+  it('returns empty result when both schemas are identical', () => {
+    const schema = { properties: { host: { type: 'string' } } }
+    expect(diff(schema, schema)).toEqual({ added: [], removed: [], modified: [] })
+  })
+
+  it('returns empty result when both schemas have no properties', () => {
+    expect(diff({}, {})).toEqual({ added: [], removed: [], modified: [] })
+  })
+
+  it('detects an added top-level field', () => {
+    const old = { properties: { host: { type: 'string' } } }
+    const next = { properties: { host: { type: 'string' }, port: { type: 'integer' } } }
+    const result = diff(old, next)
+    expect(result.added).toContain('port')
+    expect(result.removed).toHaveLength(0)
+    expect(result.modified).toHaveLength(0)
+  })
+
+  it('detects a removed top-level field', () => {
+    const old  = { properties: { host: { type: 'string' }, legacy: { type: 'string' } } }
+    const next = { properties: { host: { type: 'string' } } }
+    const result = diff(old, next)
+    expect(result.removed).toContain('legacy')
+    expect(result.added).toHaveLength(0)
+    expect(result.modified).toHaveLength(0)
+  })
+
+  it('detects a type change on an existing field', () => {
+    const old  = { properties: { timeout: { type: 'string' } } }
+    const next = { properties: { timeout: { type: 'integer' } } }
+    const result = diff(old, next)
+    expect(result.modified).toHaveLength(1)
+    expect(result.modified[0].path).toBe('timeout')
+    const typeChange = result.modified[0].changes.find(c => c.kind === 'type')
+    expect(typeChange).toMatchObject({ from: 'string', to: 'integer' })
+  })
+
+  it('detects a default being added', () => {
+    const old  = { properties: { enabled: { type: 'boolean' } } }
+    const next = { properties: { enabled: { type: 'boolean', default: false } } }
+    const result = diff(old, next)
+    expect(result.modified).toHaveLength(1)
+    const defaultChange = result.modified[0].changes.find(c => c.kind === 'default')
+    expect(defaultChange.from).toBeUndefined()
+    expect(defaultChange.to).toBe('false')
+  })
+
+  it('detects a default being changed', () => {
+    const old  = { properties: { replicas: { type: 'integer', default: 1 } } }
+    const next = { properties: { replicas: { type: 'integer', default: 3 } } }
+    const result = diff(old, next)
+    const defaultChange = result.modified[0].changes.find(c => c.kind === 'default')
+    expect(defaultChange).toMatchObject({ from: '1', to: '3' })
+  })
+
+  it('detects a default being removed', () => {
+    const old  = { properties: { mode: { type: 'string', default: 'auto' } } }
+    const next = { properties: { mode: { type: 'string' } } }
+    const result = diff(old, next)
+    const defaultChange = result.modified[0].changes.find(c => c.kind === 'default')
+    expect(defaultChange.from).toBe('"auto"')
+    expect(defaultChange.to).toBeUndefined()
+  })
+
+  it('detects a field becoming required', () => {
+    const old  = { properties: { cert: { type: 'string' } } }
+    const next = { required: ['cert'], properties: { cert: { type: 'string' } } }
+    const result = diff(old, next)
+    const reqChange = result.modified[0].changes.find(c => c.kind === 'required')
+    expect(reqChange).toMatchObject({ from: false, to: true })
+  })
+
+  it('detects a field becoming optional', () => {
+    const old  = { required: ['cert'], properties: { cert: { type: 'string' } } }
+    const next = { properties: { cert: { type: 'string' } } }
+    const result = diff(old, next)
+    const reqChange = result.modified[0].changes.find(c => c.kind === 'required')
+    expect(reqChange).toMatchObject({ from: true, to: false })
+  })
+
+  it('captures multiple scalar changes on the same field in one modified entry', () => {
+    const old  = { required: ['x'], properties: { x: { type: 'string', default: 'a' } } }
+    const next = { properties: { x: { type: 'integer', default: 0 } } }
+    const result = diff(old, next)
+    expect(result.modified).toHaveLength(1)
+    const { changes } = result.modified[0]
+    expect(changes.find(c => c.kind === 'type')).toBeTruthy()
+    expect(changes.find(c => c.kind === 'default')).toBeTruthy()
+    expect(changes.find(c => c.kind === 'required')).toBeTruthy()
+  })
+
+  it('handles simultaneous additions, removals, and modifications', () => {
+    const old  = { properties: { a: { type: 'string' }, b: { type: 'integer' } } }
+    const next = { properties: { b: { type: 'boolean' }, c: { type: 'object' } } }
+    const result = diff(old, next)
+    expect(result.added).toContain('c')
+    expect(result.removed).toContain('a')
+    expect(result.modified[0].path).toBe('b')
+  })
+
+  it('does not report a modification when only description changes', () => {
+    const old  = { properties: { host: { type: 'string', description: 'old' } } }
+    const next = { properties: { host: { type: 'string', description: 'new' } } }
+    expect(diff(old, next)).toEqual({ added: [], removed: [], modified: [] })
+  })
+
+  it('serialises array defaults to strings to avoid array-diff noise', () => {
+    const old  = { properties: { tags: { type: 'array', default: [] } } }
+    const next = { properties: { tags: { type: 'array', default: ['a'] } } }
+    const result = diff(old, next)
+    const defaultChange = result.modified[0].changes.find(c => c.kind === 'default')
+    expect(defaultChange).toMatchObject({ from: '[]', to: '["a"]' })
+  })
+
+  it('detects an added field nested inside an existing object', () => {
+    const old = { properties: { source: { type: 'object', properties: { host: { type: 'string' } } } } }
+    const next = { properties: { source: { type: 'object', properties: {
+      host: { type: 'string' },
+      port: { type: 'integer' },
+    } } } }
+    const result = diff(old, next)
+    expect(result.added).toContain('source/port')
+    expect(result.removed).toHaveLength(0)
+  })
+
+  it('detects a removed field at an arbitrary depth', () => {
+    const old = { properties: { cluster: { type: 'object', properties: {
+      auth: { type: 'object', properties: { token: { type: 'string' } } },
+    } } } }
+    const next = { properties: { cluster: { type: 'object', properties: {
+      auth: { type: 'object', properties: {} },
+    } } } }
+    const result = diff(old, next)
+    expect(result.removed).toContain('cluster/auth/token')
+  })
+
+  it('reports the full path for a modified nested field', () => {
+    const old = { properties: { reindex: { type: 'object', properties: {
+      maxRetries: { type: 'integer', default: 3 },
+    } } } }
+    const next = { properties: { reindex: { type: 'object', properties: {
+      maxRetries: { type: 'integer', default: 5 },
+    } } } }
+    const result = diff(old, next)
+    expect(result.modified).toHaveLength(1)
+    expect(result.modified[0].path).toBe('reindex/maxRetries')
+    expect(result.modified[0].changes[0]).toMatchObject({ kind: 'default', from: '3', to: '5' })
+  })
+
+  it('handles cycles in the resolved schema without looping', () => {
+    const child = { type: 'object', properties: {} }
+    const schema = { properties: { root: child } }
+    child.properties.self = child  // circular reference
+    expect(() => diff(schema, schema)).not.toThrow()
   })
 })
